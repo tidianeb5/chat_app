@@ -1,7 +1,14 @@
+import 'dart:io';
+
+import 'package:chat_app/widgets/user_image_picker.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 
 final FirebaseAuth _auth = FirebaseAuth.instance;
+final FirebaseStorage _storage = FirebaseStorage.instance;
+final FirebaseFirestore _db = FirebaseFirestore.instance;
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -18,6 +25,11 @@ class _AuthScreenState extends State<AuthScreen> {
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  File? _selectedImage;
+
+  void _selectedImageFn(File pickedImage) {
+    _selectedImage = pickedImage;
+  }
 
   void _showSnackbar(String text) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -33,6 +45,7 @@ class _AuthScreenState extends State<AuthScreen> {
       });
       final credential = await _auth.signInWithEmailAndPassword(
           email: email, password: password);
+
       _showSnackbar("Logged in");
     } on FirebaseAuthException catch (e) {
       if (e.code == 'user-not-found') {
@@ -60,6 +73,17 @@ class _AuthScreenState extends State<AuthScreen> {
       final credential = await _auth.createUserWithEmailAndPassword(
           email: email, password: password);
       print(credential);
+      final storageRef = _storage
+          .ref()
+          .child('user_images')
+          .child("${credential.user!.uid}.jpg");
+      await storageRef.putFile(_selectedImage!);
+      final downloadUrl = await storageRef.getDownloadURL();
+
+      await _db.collection('users').doc(credential.user!.uid).set({
+        'email': email,
+        'image_url': downloadUrl,
+      });
       _showSnackbar('Your account has been created.');
     } on FirebaseAuthException catch (e) {
       if (e.code == 'weak-password') {
@@ -83,7 +107,12 @@ class _AuthScreenState extends State<AuthScreen> {
     final password = _passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
-      _showSnackbar("email or password is empty");
+      _showSnackbar("email or password  is empty");
+      return;
+    }
+
+    if (_selectedImage == null && !_isLogin) {
+      _showSnackbar("Please pick an image");
       return;
     }
 
@@ -128,6 +157,8 @@ class _AuthScreenState extends State<AuthScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          if (!_isLogin)
+                            UserImagePicker(imagePickFn: _selectedImageFn),
                           TextFormField(
                             controller: _emailController,
                             decoration: const InputDecoration(
