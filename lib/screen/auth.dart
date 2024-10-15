@@ -1,6 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+final FirebaseAuth _auth = FirebaseAuth.instance;
+
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
@@ -12,45 +14,94 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen> {
   var _isLogin = true;
+  var _isLoading = false;
 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
-  void _submit() async {
-    if (_isLogin) {
-      // Log user in
-      print("login");
-    } else {
-      print("signup");
-      // Sign user up
-      //validation
-      final email = _emailController.text;
-      final password = _passwordController.text;
+  void _showSnackbar(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(text),
+      duration: const Duration(seconds: 5),
+    ));
+  }
 
-      if (email.isEmpty || password.isEmpty) {
-        print("email or password is empty");
-        return;
-      }
-
-      try {
-        final userCredentials =
-            await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: email,
-          password: password,
-        );
-
-        print(userCredentials);
-        print('success');
-      } on FirebaseException catch (e) {
+  void _login({required String email, required String password}) async {
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+      final credential = await _auth.signInWithEmailAndPassword(
+          email: email, password: password);
+      _showSnackbar("Logged in");
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'user-not-found') {
+        _showSnackbar('No user found for that email.');
+      } else if (e.code == 'wrong-password') {
+        _showSnackbar('Wrong password provided for that user.');
+      } else {
         print(e);
-      } catch (e) {
-        print(e);
+        _showSnackbar(e.toString());
       }
+    } catch (e) {
+      _showSnackbar(e.toString());
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
+  }
+
+  void _signup({required String email, required String password}) async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      final credential = await _auth.createUserWithEmailAndPassword(
+          email: email, password: password);
+      print(credential);
+      _showSnackbar('Your account has been created.');
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'weak-password') {
+        _showSnackbar('The password provided is too weak. ');
+      } else if (e.code == 'email-already-in-use') {
+        _showSnackbar('The account already exists for that email.');
+      } else {
+        _showSnackbar(e.toString());
+      }
+    } catch (e) {
+      _showSnackbar(e.toString());
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _submit() async {
+    final email = _emailController.text;
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      _showSnackbar("email or password is empty");
+      return;
+    }
+
+    if (_isLogin) {
+      _login(email: email, password: password);
+      return;
+    }
+
+    _signup(email: email, password: password);
+
+    setState(() {
+      _isLoading = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    // _auth.signOut();
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.primary,
       body: Center(
@@ -92,15 +143,17 @@ class _AuthScreenState extends State<AuthScreen> {
                             obscureText: true,
                           ),
                           const SizedBox(height: 12),
-                          ElevatedButton(
-                            onPressed: _submit,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Theme.of(context)
-                                  .colorScheme
-                                  .primaryContainer,
-                            ),
-                            child: Text(_isLogin ? 'Login' : 'Signup'),
-                          ),
+                          _isLoading
+                              ? const CircularProgressIndicator()
+                              : ElevatedButton(
+                                  onPressed: _submit,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Theme.of(context)
+                                        .colorScheme
+                                        .primaryContainer,
+                                  ),
+                                  child: Text(_isLogin ? 'Login' : 'Signup'),
+                                ),
                           TextButton(
                             onPressed: () {
                               setState(() {
